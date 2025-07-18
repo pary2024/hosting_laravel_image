@@ -6,6 +6,7 @@ use App\Models\Company;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class CompanyController extends Controller
 {
@@ -26,7 +27,8 @@ class CompanyController extends Controller
 
     // POST create new company with image to cloud
     public function store(Request $request)
-    {
+{
+    try {
         $validate = Validator::make($request->all(), [
             'name' => 'required',
             'phone' => 'required',
@@ -42,7 +44,7 @@ class CompanyController extends Controller
             ], 422);
         }
 
-        $company = new Company();
+        $company = new \App\Models\Company();
         $company->name = $request->name;
         $company->phone = $request->phone;
         $company->address = $request->address;
@@ -52,11 +54,11 @@ class CompanyController extends Controller
             $image = $request->file('image');
             $fileName = uniqid('company_') . '.' . $image->getClientOriginalExtension();
 
-            // Store image to cloud (Cloudflare R2 / AWS S3)
-            $path = $image->storeAs('companies', $fileName, 's3'); // 's3' from config/filesystems.php
-            $url = Storage::disk('s3')->url($path); // public URL to access it
+            // Store to S3
+            $path = $image->storeAs('companies', $fileName, 's3');
+            $url = Storage::disk('s3')->url($path);
 
-            $company->image = $url; // Save full image URL in DB
+            $company->image = $url;
         }
 
         $company->save();
@@ -65,7 +67,22 @@ class CompanyController extends Controller
             'message' => 'Company created successfully',
             'company' => $company,
         ], 201);
+        
+    } catch (\Throwable $e) {
+        // Log the real error for developer
+        Log::error('Company store error', [
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine()
+        ]);
+
+        // Show error in Postman (don't show full trace)
+        return response()->json([
+            'message' => 'Server error',
+            'error' => $e->getMessage(),
+        ], 500);
     }
+}
 
     // DELETE a company and remove image from cloud if exists
     public function delete($id)
